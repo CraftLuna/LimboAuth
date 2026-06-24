@@ -31,6 +31,7 @@ import com.j256.ormlite.field.FieldType;
 import com.j256.ormlite.stmt.QueryBuilder;
 import com.j256.ormlite.stmt.UpdateBuilder;
 import com.j256.ormlite.support.ConnectionSource;
+import com.j256.ormlite.table.DatabaseTableConfig;
 import com.j256.ormlite.table.TableInfo;
 import com.j256.ormlite.table.TableUtils;
 import com.velocitypowered.api.command.CommandManager;
@@ -112,6 +113,7 @@ import net.elytrium.limboauth.listener.AuthListener;
 import net.elytrium.limboauth.listener.BackendEndpointsListener;
 import net.elytrium.limboauth.model.RegisteredPlayer;
 import net.elytrium.limboauth.model.SQLRuntimeException;
+import net.elytrium.limboauth.model.TwoFactorAuth;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.ComponentSerializer;
 import net.kyori.adventure.title.Title;
@@ -185,6 +187,7 @@ public class LimboAuth {
 
   private ConnectionSource connectionSource;
   private Dao<RegisteredPlayer, String> playerDao;
+  private Dao<TwoFactorAuth, Integer> twoFactorDao;
   private Pattern nicknameValidationPattern;
   private Limbo authServer;
 
@@ -344,6 +347,18 @@ public class LimboAuth {
 
       this.playerDao = DaoManager.createDao(this.connectionSource, RegisteredPlayer.class);
       this.migrateDb(this.playerDao);
+
+      DatabaseTableConfig<TwoFactorAuth> twoFactorTableConfig =
+          DatabaseTableConfig.fromClass(this.connectionSource.getDatabaseType(), TwoFactorAuth.class);
+      twoFactorTableConfig.setTableName(Settings.IMP.DATABASE.TWO_FACTOR_TABLE);
+      try {
+        TableUtils.createTableIfNotExists(this.connectionSource, twoFactorTableConfig);
+      } catch (SQLException e) {
+        if (!e.getMessage().contains("CREATE INDEX")) {
+          throw e;
+        }
+      }
+      this.twoFactorDao = DaoManager.createDao(this.connectionSource, twoFactorTableConfig);
     } catch (SQLException e) {
       throw new SQLRuntimeException(e);
     }
@@ -369,7 +384,7 @@ public class LimboAuth {
     manager.register("forcechangepassword", new ForceChangePasswordCommand(this, this.server, this.playerDao), "forcechangepass", "fcp");
     manager.register("destroysession", new DestroySessionCommand(this), "logout");
     if (Settings.IMP.MAIN.ENABLE_TOTP) {
-      manager.register("2fa", new TotpCommand(this.playerDao), "totp");
+      manager.register("2fa", new TotpCommand(this.playerDao, this.twoFactorDao), "totp");
     }
     manager.register("limboauth", new LimboAuthCommand(this), "la", "auth", "lauth");
 
@@ -957,6 +972,10 @@ public class LimboAuth {
 
   public Dao<RegisteredPlayer, String> getPlayerDao() {
     return this.playerDao;
+  }
+
+  public Dao<TwoFactorAuth, Integer> getTwoFactorDao() {
+    return this.twoFactorDao;
   }
 
   private static void setLogger(Logger logger) {

@@ -110,7 +110,7 @@ public class Settings extends YamlConfig {
     public boolean SAVE_PREMIUM_ACCOUNTS = true;
     public boolean ENABLE_TOTP = true;
     public boolean TOTP_NEED_PASSWORD = true;
-    public boolean REGISTER_NEED_REPEAT_PASSWORD = true;
+    public boolean REGISTER_NEED_REPEAT_PASSWORD = false;
     public boolean CHANGE_PASSWORD_NEED_OLD_PASSWORD = true;
     @Comment("Used in unregister and premium commands.")
     public String CONFIRM_KEYWORD = "confirm";
@@ -521,6 +521,12 @@ public class Settings extends YamlConfig {
     public String PASSWORD = "password";
     public String DATABASE = "limboauth";
     public String CONNECTION_PARAMETERS = "?autoReconnect=true&initialTimeout=1&useSSL=false";
+
+    @Comment({
+        "Table that stores 2FA secrets. Expected structure: accountID (matches Accounts.id) and secretKey.",
+        "The player's accountID is resolved from the Accounts table by their name (realname)."
+    })
+    public String TWO_FACTOR_TABLE = "2fa";
   }
 
   public static class MD5KeySerializer extends ConfigSerializer<byte[], String> {

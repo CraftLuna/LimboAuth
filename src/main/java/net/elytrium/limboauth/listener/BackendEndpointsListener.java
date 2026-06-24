@@ -29,6 +29,7 @@ import com.velocitypowered.proxy.connection.MinecraftConnection;
 import com.velocitypowered.proxy.connection.backend.VelocityServerConnection;
 import com.velocitypowered.proxy.protocol.packet.PluginMessagePacket;
 import io.netty.buffer.Unpooled;
+import java.sql.SQLException;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.Map;
 import java.util.function.Function;
@@ -40,6 +41,8 @@ import net.elytrium.limboauth.backend.type.StringDatabaseEndpoint;
 import net.elytrium.limboauth.backend.type.StringEndpoint;
 import net.elytrium.limboauth.backend.type.UnknownEndpoint;
 import net.elytrium.limboauth.model.RegisteredPlayer;
+import net.elytrium.limboauth.model.SQLRuntimeException;
+import net.elytrium.limboauth.model.TwoFactorAuth;
 
 public class BackendEndpointsListener {
 
@@ -51,8 +54,22 @@ public class BackendEndpointsListener {
       new SimpleEntry<>("premium_state", lauth -> new StringEndpoint(lauth, "premium_state",
           username -> lauth.isPremiumInternal(username).getState().name())),
       new SimpleEntry<>("hash", plugin -> new StringDatabaseEndpoint(plugin, "hash", RegisteredPlayer::getHash)),
-      new SimpleEntry<>("totp_token", plugin -> new StringDatabaseEndpoint(plugin, "totp_token", RegisteredPlayer::getTotpToken)),
-      new SimpleEntry<>("reg_date", plugin -> new LongDatabaseEndpoint(plugin, "reg_date", RegisteredPlayer::getRegDate)),
+      new SimpleEntry<>("totp_token", plugin -> new StringDatabaseEndpoint(plugin, "totp_token", player -> {
+        try {
+          TwoFactorAuth twoFactorAuth = plugin.getTwoFactorDao().queryForId(player.getId());
+          return twoFactorAuth == null ? "" : twoFactorAuth.getSecretKey();
+        } catch (SQLException e) {
+          throw new SQLRuntimeException(e);
+        }
+      })),
+          new SimpleEntry<>(
+                  "reg_date",
+                  plugin -> new LongDatabaseEndpoint(
+                          plugin,
+                          "reg_date",
+                          player -> player.getRegDate().getTime()
+                  )
+          ),
       new SimpleEntry<>("uuid", plugin -> new StringDatabaseEndpoint(plugin, "uuid", RegisteredPlayer::getUuid)),
       new SimpleEntry<>("premium_uuid", plugin -> new StringDatabaseEndpoint(plugin, "premium_uuid", RegisteredPlayer::getPremiumUuid)),
       new SimpleEntry<>("ip", plugin -> new StringDatabaseEndpoint(plugin, "ip", RegisteredPlayer::getIP)),

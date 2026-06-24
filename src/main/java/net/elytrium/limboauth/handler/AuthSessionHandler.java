@@ -49,6 +49,7 @@ import net.elytrium.limboauth.event.TaskEvent;
 import net.elytrium.limboauth.migration.MigrationHash;
 import net.elytrium.limboauth.model.RegisteredPlayer;
 import net.elytrium.limboauth.model.SQLRuntimeException;
+import net.elytrium.limboauth.model.TwoFactorAuth;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.title.Title;
@@ -113,6 +114,7 @@ public class AuthSessionHandler implements LimboSessionHandler {
   private LimboPlayer player;
   private int attempts = Settings.IMP.MAIN.LOGIN_ATTEMPTS;
   private boolean totpState;
+  private String totpToken = "";
   private String tempPassword;
   private boolean tokenReceived;
 
@@ -143,7 +145,7 @@ public class AuthSessionHandler implements LimboSessionHandler {
           int sizeOfValidRegistrations = alreadyRegistered.size();
           if (Settings.IMP.MAIN.IP_LIMIT_VALID_TIME > 0) {
             for (RegisteredPlayer registeredPlayer : alreadyRegistered.stream()
-                .filter(registeredPlayer -> registeredPlayer.getRegDate() < System.currentTimeMillis() - Settings.IMP.MAIN.IP_LIMIT_VALID_TIME)
+                .filter(registeredPlayer -> registeredPlayer.getRegDate().getTime() < System.currentTimeMillis() - Settings.IMP.MAIN.IP_LIMIT_VALID_TIME)
                 .collect(Collectors.toList())) {
               registeredPlayer.setIP("");
               this.playerDao.update(registeredPlayer);
@@ -244,7 +246,8 @@ public class AuthSessionHandler implements LimboSessionHandler {
         this.saveTempPassword(password);
 
         if (password.length() > 0 && checkPassword(password, this.playerInfo, this.playerDao)) {
-          if (this.playerInfo.getTotpToken().isEmpty()) {
+          this.totpToken = this.fetchTotpToken();
+          if (this.totpToken.isEmpty()) {
             this.finishLogin();
           } else {
             this.totpState = true;
@@ -259,7 +262,7 @@ public class AuthSessionHandler implements LimboSessionHandler {
 
         return;
       } else if (command == Command.TOTP && this.totpState && this.playerInfo != null) {
-        if (TOTP_CODE_VERIFIER.isValidCode(this.playerInfo.getTotpToken(), args[1])) {
+        if (TOTP_CODE_VERIFIER.isValidCode(this.totpToken, args[1])) {
           this.finishLogin();
           return;
         } else {
@@ -338,6 +341,19 @@ public class AuthSessionHandler implements LimboSessionHandler {
 
   private void saveTempPassword(String password) {
     this.tempPassword = password;
+  }
+
+  private String fetchTotpToken() {
+    if (!Settings.IMP.MAIN.ENABLE_TOTP || this.playerInfo == null) {
+      return "";
+    }
+
+    try {
+      TwoFactorAuth twoFactorAuth = this.plugin.getTwoFactorDao().queryForId(this.playerInfo.getId());
+      return twoFactorAuth == null ? "" : twoFactorAuth.getSecretKey();
+    } catch (SQLException e) {
+      throw new SQLRuntimeException(e);
+    }
   }
 
   @Override
